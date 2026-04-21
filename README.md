@@ -1,61 +1,49 @@
-# 🎓 EdMitted Scholarship & Financial Aid Match Engine
+# 🎓 EdMitted Financial Aid & Scholarship Matcher
 
-A **FastAPI-based microservice** that intelligently matches students with the most suitable scholarships and financial aid opportunities using a **dual-probability scoring system**.
+A **FastAPI-based microservice** that intelligently matches students with the most suitable scholarships and financial aid opportunities using a **hybrid retrieval engine** (SQL filtering + pgvector semantic search).
 
 ---
 
 ## 🚀 Features
 
-* 🎯 **Achievement Match (%)**
+- 🎯 **Two-Stage Search Algorithm**
+  - **Stage 1 (Hard SQL Filtering):** Immediately excludes disqualifying scholarships based on strict, non-negotiable parameters (GPA limits, Income Ceilings, State of Residence).
+  - **Stage 2 (Semantic Ranking):** Uses Google Gemini embeddings and PostgreSQL `pgvector` to rank valid scholarships based on the semantic similarity of the student's major and extracurriculars to the scholarship's open-text description.
 
-  * Based on GPA, SAT score, and extracurriculars
-  * Uses percentile-style comparison for realistic evaluation
+- ⚖️ **Match Scoring System**
+  - **Achievement Match (%):** Evaluates semantic alignment using vector Cosine Distance.
+  - **Need Match (%):** Generates a standardized score based on financial need brackets and Adjusted Gross Income (AGI).
+  - **Overall Match (%):** A calculated weighted combination prioritizing achievement (70%) and need (30%).
 
-* 💰 **Need Match (%)**
-
-  * Based on family income and affordability
-  * Uses net price vs sticker price analysis
-
-* ⚖️ **Weighted Scoring System**
-
-  * Customizable importance between merit and financial need
-  * Dynamic ranking based on user preference
-
-* 🏆 **Top 10 Recommendations**
-
-  * Returns the most relevant programs sorted by overall match
-
-* ⚡ **FastAPI Microservice**
-
-  * Lightweight, scalable, and easy to integrate with other systems
+- ⚡ **FastAPI Microservice**
+  - Lightweight, scalable API returning the top 10 best-matched programs in milliseconds.
 
 ---
 
 ## 🛠️ Tech Stack
 
-* **Backend:** FastAPI
-* **Language:** Python
-* **Data Processing:** Pandas
-* **Server:** Uvicorn
+- **Backend:** FastAPI, Python
+- **Database:** PostgreSQL (with `pgvector` extension)
+- **AI / Embeddings:** Google Gemini API
+- **Data Processing:** Pandas, psycopg2
 
 ---
 
 ## 📡 API Endpoints
 
-### 1. POST `/match-scholarships`
+### POST `/api/match-scholarships`
 
-Generates top 10 scholarship matches.
+Generates the top 10 scholarship matches based on a student's profile.
 
 #### 📥 Sample Input
 
 ```json
 {
   "gpa": 3.8,
-  "sat": 1400,
-  "extracurriculars": ["DECA President", "Volunteer"],
-  "family_income": 50000,
-  "achievement_weight": 0.6,
-  "need_weight": 0.4
+  "income": 50000.0,
+  "state": "WA",
+  "major": "Computer Science",
+  "extracurriculars": "Debate club president, volunteer math tutor"
 }
 ```
 
@@ -95,15 +83,15 @@ Health check endpoint.
 
 ### 🔹 Achievement Match
 
-* Compares student GPA against simulated institutional percentiles
-* Adjusted using SAT score and extracurricular involvement
-* Produces a normalized score (0–98%)
+- Compares student GPA against simulated institutional percentiles
+- Adjusted using SAT score and extracurricular involvement
+- Produces a normalized score (0–98%)
 
 ### 🔹 Need Match
 
-* Maps income to financial aid brackets (NPT columns)
-* Evaluates affordability using net price vs total cost
-* Generates a financial compatibility score
+- Maps income to financial aid brackets (NPT columns)
+- Evaluates affordability using net price vs total cost
+- Generates a financial compatibility score
 
 ### 🔹 Final Ranking
 
@@ -111,8 +99,8 @@ Health check endpoint.
 Overall Score = (Achievement × Weight) + (Need × Weight)
 ```
 
-* Results are sorted by overall score
-* Top 10 programs are returned
+- Results are sorted by overall score
+- Top 10 programs are returned
 
 ---
 
@@ -122,7 +110,7 @@ Overall Score = (Achievement × Weight) + (Need × Weight)
 
 ### Required:
 
-* `Most-Recent-Cohorts-All-Data-Elements.csv`
+- `Most-Recent-Cohorts-All-Data-Elements.csv`
 
 👉 Place the dataset in the root directory before running the project.
 
@@ -152,17 +140,17 @@ http://127.0.0.1:8001/docs
 
 ## 📌 Notes
 
-* Scores are capped below 100% to maintain realistic variation
-* Randomized elements simulate institutional diversity where data is missing
-* Designed to integrate with a Node.js backend as a scoring engine
+- Scores are capped below 100% to maintain realistic variation
+- Randomized elements simulate institutional diversity where data is missing
+- Designed to integrate with a Node.js backend as a scoring engine
 
 ---
 
 ## 💡 Future Improvements
 
-* Integrate real GPA percentile datasets
-* Add filtering for program types (STEM, Business, etc.)
-* Improve explainability using AI-generated summaries
+- Integrate real GPA percentile datasets
+- Add filtering for program types (STEM, Business, etc.)
+- Improve explainability using AI-generated summaries
 
 ---
 

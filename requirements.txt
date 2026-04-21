@@ -2,3 +2,6 @@ fastapi
 uvicorn
 pydantic
 pandas
+google-genai
+python-dotenv
+psycopg2-binary
