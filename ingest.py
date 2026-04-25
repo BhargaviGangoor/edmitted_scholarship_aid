@@ -176,29 +176,7 @@ def process_rows() -> None:
     )
 
 
-def get_student_embedding(client,major,extracurriculars):
-    text = f"Major: {major} {extracurriculars}".strip()
-    return get_embedding(client, text)
 
-def rank_scholarships(conn, embedding, gpa, income, state):
-    sql = """
-        SELECT id, name, description,
-               embedding <=> %s AS distance
-        FROM financial_opportunities
-        WHERE
-            min_gpa IS NOT NULL
-            AND min_gpa <= %s
-            AND (income_ceiling IS NULL OR income_ceiling >= %s)
-            AND (state_requirement = %s OR state_requirement = 'National')
-        ORDER BY embedding <=> %s
-        LIMIT 10;
-    """
-
-    vector_literal = vector_to_pgvector_literal(embedding)
-
-    with conn.cursor() as cursor:
-        cursor.execute(sql, (vector_literal, gpa, income, state, vector_literal))
-        return cursor.fetchall()
 
 
 if __name__ == "__main__":
