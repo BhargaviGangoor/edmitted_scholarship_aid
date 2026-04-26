@@ -1,157 +1,152 @@
-# 🎓 EdMitted Financial Aid & Scholarship Matcher
+# EdMitted Scholarship Matcher API
 
-A **FastAPI-based microservice** that intelligently matches students with the most suitable scholarships and financial aid opportunities using a **hybrid retrieval engine** (SQL filtering + pgvector semantic search).
+FastAPI service for scholarship matching using structured eligibility filters, vector similarity, and LLM-powered explanation/chat features.
 
----
+## What This Project Does
 
-## 🚀 Features
+1. Ingests scholarships from CSV into PostgreSQL with embeddings.
+2. Filters scholarships by hard eligibility rules (GPA, income, state).
+3. Scores candidates with:
+   - achievement score (vector similarity + text keyword bonus)
+   - need score (student income + scholarship income targeting)
+4. Ranks all eligible rows, then returns the best matches.
+5. Generates a natural-language explanation of top results.
+6. Supports transcript parsing and chat-driven profile collection.
 
-- 🎯 **Two-Stage Search Algorithm**
-  - **Stage 1 (Hard SQL Filtering):** Immediately excludes disqualifying scholarships based on strict, non-negotiable parameters (GPA limits, Income Ceilings, State of Residence).
-  - **Stage 2 (Semantic Ranking):** Uses Google Gemini embeddings and PostgreSQL `pgvector` to rank valid scholarships based on the semantic similarity of the student's major and extracurriculars to the scholarship's open-text description.
+## File-by-File Guide
 
-- ⚖️ **Match Scoring System**
-  - **Achievement Match (%):** Evaluates semantic alignment using vector Cosine Distance.
-  - **Need Match (%):** Generates a standardized score based on financial need brackets and Adjusted Gross Income (AGI).
-  - **Overall Match (%):** A calculated weighted combination prioritizing achievement (70%) and need (30%).
+- `app.py`
+  - FastAPI entrypoint.
+  - Defines endpoints:
+    - `GET /`
+    - `POST /api/match-scholarships`
+    - `POST /api/parse-gradecard`
+    - `POST /api/chat`
+  - Runs end-to-end matching flow:
+    - embed student profile
+    - fetch eligible scholarships from DB
+    - compute achievement/need percentages
+    - apply thresholds
+    - rank all valid rows and return top results
+  - Calls LLM explanation generation for final matches.
 
-- ⚡ **FastAPI Microservice**
-  - Lightweight, scalable API returning the top 10 best-matched programs in milliseconds.
+- `database.py`
+  - Database/query helpers used by API runtime.
+  - Builds student embedding input text.
+  - Queries eligible scholarships from `financial_opportunities` with:
+    - GPA filter
+    - income ceiling filter
+    - state filter (`state_requirement` or `National`)
+  - Returns vector distance + text rank for downstream scoring.
 
----
+- `ingest.py`
+  - Data ingestion pipeline from CSV to PostgreSQL.
+  - Loads `edmitted_top100_scholarships.csv`.
+  - Generates embeddings for each scholarship text.
+  - Clears and repopulates `financial_opportunities` table.
+  - Handles nullable numeric fields and embedding/model fallback.
 
-## 🛠️ Tech Stack
+- `llm_services.py`
+  - LLM utility layer.
+  - `generate_explanation`: creates concise explanation for top matches.
+  - `parse_gradecard`: extracts profile JSON from transcript/gradecard text.
+  - `process_chat_message`: runs advisor chat and intercepts trigger JSON when profile is complete.
 
-- **Backend:** FastAPI, Python
-- **Database:** PostgreSQL (with `pgvector` extension)
-- **AI / Embeddings:** Google Gemini API
-- **Data Processing:** Pandas, psycopg2
+- `models.py`
+  - Pydantic request/response models:
+    - `StudentProfile`
+    - `GradecardRequest`
+    - `ChatMessage`
+    - `ChatRequest`
 
----
+- `scoring.py`
+  - Pure scoring helpers:
+    - `achievement_percentage(distance)`
+    - `need_percentage(student_income, income_ceiling)`
 
-## 📡 API Endpoints
+- `requirements.txt`
+  - Python dependencies for API, DB, and Gemini integration.
 
-### POST `/api/match-scholarships`
+- `edmitted_top100_scholarships.csv`
+  - Scholarship source data used during ingestion.
 
-Generates the top 10 scholarship matches based on a student's profile.
+## Prerequisites
 
-#### 📥 Sample Input
+- Python 3.10+
+- PostgreSQL with `pgvector` enabled
+- Google Gemini API key
 
-```json
-{
-  "gpa": 3.8,
-  "income": 50000.0,
-  "state": "WA",
-  "major": "Computer Science",
-  "extracurriculars": "Debate club president, volunteer math tutor"
-}
+## Environment Variables
+
+Create a `.env` file in project root:
+
+```env
+GEMINI_API_KEY=your_gemini_key
+DATABASE_URL=postgresql://user:password@host:5432/dbname
 ```
 
-#### 📤 Sample Output
-
-```json
-[
-  {
-    "rank": 1,
-    "program": "University X / Institutional Grant",
-    "achievement_match": "94.2%",
-    "achievement_label": "Very High",
-    "need_match": "88.7%",
-    "need_label": "High",
-    "logic_summary": "Strong academic performance with strong affordability"
-  }
-]
-```
-
----
-
-### 2. GET `/health`
-
-Health check endpoint.
-
-#### Response
-
-```json
-{
-  "status": "ok"
-}
-```
-
----
-
-## 🧠 How It Works
-
-### 🔹 Achievement Match
-
-- Compares student GPA against simulated institutional percentiles
-- Adjusted using SAT score and extracurricular involvement
-- Produces a normalized score (0–98%)
-
-### 🔹 Need Match
-
-- Maps income to financial aid brackets (NPT columns)
-- Evaluates affordability using net price vs total cost
-- Generates a financial compatibility score
-
-### 🔹 Final Ranking
-
-```
-Overall Score = (Achievement × Weight) + (Need × Weight)
-```
-
-- Results are sorted by overall score
-- Top 10 programs are returned
-
----
-
-## 📂 Dataset
-
-⚠️ The dataset is **not included** in this repository due to GitHub size limits.
-
-### Required:
-
-- `Most-Recent-Cohorts-All-Data-Elements.csv`
-
-👉 Place the dataset in the root directory before running the project.
-
----
-
-## ▶️ Running the Project
-
-### 1. Install dependencies
+## Install
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Start server
+## Ingest Scholarship Data
+
+Run this whenever CSV data changes:
 
 ```bash
-python -m uvicorn main:app --port 8001
+python ingest.py
 ```
 
-### 3. Open Swagger UI
+## Run API
 
+```bash
+python -m uvicorn app:app --reload --port 8001
 ```
+
+Open docs:
+
+```text
 http://127.0.0.1:8001/docs
 ```
 
----
+## API Endpoints
 
-## 📌 Notes
+### `GET /`
 
-- Scores are capped below 100% to maintain realistic variation
-- Randomized elements simulate institutional diversity where data is missing
-- Designed to integrate with a Node.js backend as a scoring engine
+Basic health response.
 
----
+### `POST /api/match-scholarships`
 
-## 💡 Future Improvements
+Input example:
 
-- Integrate real GPA percentile datasets
-- Add filtering for program types (STEM, Business, etc.)
-- Improve explainability using AI-generated summaries
+```json
+{
+  "gpa": 3.8,
+  "income": 65000,
+  "state": "California",
+  "major": "Computer Science",
+  "extracurriculars": "Robotics club"
+}
+```
 
----
+Response includes:
 
-.
+- `achievement_table` (top 10 by achievement)
+- `need_table` (top 10 by need)
+- `final_matches` (best overall matches from full eligible set)
+- `explanation`
+
+### `POST /api/parse-gradecard`
+
+Parses free-text gradecard/transcript into student profile fields.
+
+### `POST /api/chat`
+
+Chat endpoint that collects required profile details and automatically triggers scholarship matching once all required fields are present.
+
+## Notes
+
+- Final ranking evaluates all valid eligible rows before selecting top output matches.
+- If your CSV contains `No Limit` for income, the ingestion parser currently treats non-numeric values as null.

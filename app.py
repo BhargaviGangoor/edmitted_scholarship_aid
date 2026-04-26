@@ -6,10 +6,32 @@ from google import genai
 
 from models import StudentProfile, GradecardRequest, ChatRequest
 from scoring import achievement_percentage, need_percentage
-from database import get_student_embedding, get_all_eligible_scholarships
+from database import get_student_embedding, get_all_eligible_scholarships, embedding_fallback_active
 from llm_services import generate_explanation, parse_gradecard, process_chat_message
 
 app = FastAPI()
+FINAL_MATCH_LIMIT = 10
+
+STATE_TO_ABBR = {
+    "ALABAMA": "AL", "ALASKA": "AK", "ARIZONA": "AZ", "ARKANSAS": "AR", "CALIFORNIA": "CA",
+    "COLORADO": "CO", "CONNECTICUT": "CT", "DELAWARE": "DE", "FLORIDA": "FL", "GEORGIA": "GA",
+    "HAWAII": "HI", "IDAHO": "ID", "ILLINOIS": "IL", "INDIANA": "IN", "IOWA": "IA",
+    "KANSAS": "KS", "KENTUCKY": "KY", "LOUISIANA": "LA", "MAINE": "ME", "MARYLAND": "MD",
+    "MASSACHUSETTS": "MA", "MICHIGAN": "MI", "MINNESOTA": "MN", "MISSISSIPPI": "MS", "MISSOURI": "MO",
+    "MONTANA": "MT", "NEBRASKA": "NE", "NEVADA": "NV", "NEW HAMPSHIRE": "NH", "NEW JERSEY": "NJ",
+    "NEW MEXICO": "NM", "NEW YORK": "NY", "NORTH CAROLINA": "NC", "NORTH DAKOTA": "ND", "OHIO": "OH",
+    "OKLAHOMA": "OK", "OREGON": "OR", "PENNSYLVANIA": "PA", "RHODE ISLAND": "RI", "SOUTH CAROLINA": "SC",
+    "SOUTH DAKOTA": "SD", "TENNESSEE": "TN", "TEXAS": "TX", "UTAH": "UT", "VERMONT": "VT",
+    "VIRGINIA": "VA", "WASHINGTON": "WA", "WEST VIRGINIA": "WV", "WISCONSIN": "WI", "WYOMING": "WY",
+    "DISTRICT OF COLUMBIA": "DC"
+}
+
+
+def normalize_state_input(state: str) -> str:
+    value = state.strip().upper()
+    if len(value) == 2 and value.isalpha():
+        return value
+    return STATE_TO_ABBR.get(value, state)
 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -25,13 +47,22 @@ def match_scholarships_api(profile: StudentProfile):
         return {"matches": [], "error": "Missing DATABASE_URL"}
 
     with psycopg2.connect(database_url, sslmode="require") as conn:
-        student_embedding = get_student_embedding(
-            client,
-            profile.major,
-            profile.extracurriculars
-        )
+        try:
+            student_embedding = get_student_embedding(
+                client,
+                profile.major,
+                profile.extracurriculars
+            )
+        except Exception as exc:
+            return {
+                "status": "error",
+                "matches": [],
+                "error": f"Unable to create student embedding: {exc}"
+            }
         
         search_text = f"{profile.major} {profile.extracurriculars}"
+
+        normalized_state = normalize_state_input(profile.state)
 
         rows = get_all_eligible_scholarships(
             conn,
@@ -39,8 +70,10 @@ def match_scholarships_api(profile: StudentProfile):
             search_text,
             profile.gpa,
             profile.income,
-            profile.state
+            normalized_state
         )
+
+    fallback_mode = embedding_fallback_active()
 
     valid_scholarships = []
 
@@ -55,16 +88,18 @@ def match_scholarships_api(profile: StudentProfile):
         # HYBRID FUSION: Add a bonus up to 20% if exact keywords matched!
         keyword_bonus = min(20.0, text_rank * 100.0)
         achievement_match = round(min(100.0, base_achievement + keyword_bonus), 2)
+
+        # During provider quota fallback, rely more on lexical match signal
+        # to keep retrieval usable without lowering the >=60 rule.
+        if fallback_mode:
+            lexical_recovery_score = min(100.0, text_rank * 1000.0)
+            achievement_match = round(max(achievement_match, lexical_recovery_score), 2)
         
         need_match = need_percentage(profile.income, income_ceiling)
 
-        # NEW STRICT FILTER LOGIC:
-        if achievement_match >= 60.0:
-            pass  # always keep
-        elif 55.0 <= achievement_match < 60.0 and need_match > 80.0:
-            pass  # keep ONLY if borderline AND need_match is exceptionally high
-        else:
-            continue  # Otherwise remove (achievement < 55, or 55-60 with low need)
+        # Strict quality gate: only keep scholarships with achievement >= 60.
+        if achievement_match < 60.0:
+            continue
 
         valid_scholarships.append({
             "id": row[0],
@@ -74,7 +109,7 @@ def match_scholarships_api(profile: StudentProfile):
             "need_match_percentage": need_match
         })
 
-    # 2. Implement proper dual ranking in Python
+    # 2. Keep leaderboard views for each dimension
     top_achievement = sorted(
         valid_scholarships, 
         key=lambda x: x["achievement_match_percentage"], 
@@ -87,21 +122,13 @@ def match_scholarships_api(profile: StudentProfile):
         reverse=True
     )[:10]
 
-    # 3. Combine both lists using UNION (no duplicates)
-    union_results = []
-    seen_ids = set()
-
-    for sch in top_achievement + top_need:
-        if sch["id"] not in seen_ids:
-            seen_ids.add(sch["id"])
-            union_results.append(sch)
-
-    # 4. Apply PRIORITY-BASED RANKING on union result
+    # 3. Apply PRIORITY-BASED RANKING on all valid scholarships.
+    # This evaluates every eligible row before selecting best matches.
     top_bucket = []
     middle_bucket = []
     bottom_bucket = []
 
-    for sch in union_results:
+    for sch in valid_scholarships:
         ach = sch["achievement_match_percentage"]
         nd = sch["need_match_percentage"]
         
@@ -119,13 +146,15 @@ def match_scholarships_api(profile: StudentProfile):
             reverse=True
         )
 
-    final_matches = sort_bucket(top_bucket) + sort_bucket(middle_bucket) + sort_bucket(bottom_bucket)
+    ranked_matches = sort_bucket(top_bucket) + sort_bucket(middle_bucket) + sort_bucket(bottom_bucket)
+    final_matches = ranked_matches[:FINAL_MATCH_LIMIT]
 
     # Generate the RAG explanation text based on the top results
     explanation = generate_explanation(client, profile, final_matches)
 
     return {
         "status": "success",
+        "embedding_mode": "fallback" if fallback_mode else "provider",
         "achievement_table": top_achievement,
         "need_table": top_need,
         "final_matches": final_matches,
