@@ -77,7 +77,7 @@ def match_scholarships_api(profile: StudentProfile):
 
     valid_scholarships = []
 
-    # 1. Apply threshold filtering BEFORE ranking
+    # 1. Score all eligible scholarships returned by SQL filters.
     for row in rows:
         distance = float(row[3])
         text_rank = float(row[4])
@@ -97,7 +97,7 @@ def match_scholarships_api(profile: StudentProfile):
         
         need_match = need_percentage(profile.income, income_ceiling)
 
-        # Strict quality gate: only keep scholarships with achievement >= 60.
+        # Hard quality gate requested by product: keep only achievement >= 60.
         if achievement_match < 60.0:
             continue
 
@@ -112,41 +112,26 @@ def match_scholarships_api(profile: StudentProfile):
     # 2. Keep leaderboard views for each dimension
     top_achievement = sorted(
         valid_scholarships, 
-        key=lambda x: x["achievement_match_percentage"], 
+        key=lambda x: (x["achievement_match_percentage"], x["need_match_percentage"]),
         reverse=True
     )[:10]
     
     top_need = sorted(
         valid_scholarships, 
-        key=lambda x: x["need_match_percentage"], 
+        key=lambda x: (x["need_match_percentage"], x["achievement_match_percentage"]),
         reverse=True
     )[:10]
 
-    # 3. Apply PRIORITY-BASED RANKING on all valid scholarships.
-    # This evaluates every eligible row before selecting best matches.
-    top_bucket = []
-    middle_bucket = []
-    bottom_bucket = []
-
-    for sch in valid_scholarships:
-        ach = sch["achievement_match_percentage"]
-        nd = sch["need_match_percentage"]
-        
-        if ach >= 60.0 and nd >= 70.0:
-            top_bucket.append(sch)
-        elif ach >= 60.0 or nd >= 70.0:
-            middle_bucket.append(sch)
-        else:
-            bottom_bucket.append(sch)
-
-    def sort_bucket(bucket):
-        return sorted(
-            bucket, 
-            key=lambda x: (x["achievement_match_percentage"], x["need_match_percentage"]), 
-            reverse=True
-        )
-
-    ranked_matches = sort_bucket(top_bucket) + sort_bucket(middle_bucket) + sort_bucket(bottom_bucket)
+    # 3. Build overall top 10 by combining achievement + need.
+    ranked_matches = sorted(
+        valid_scholarships,
+        key=lambda x: (
+            round((x["achievement_match_percentage"] * 0.6) + (x["need_match_percentage"] * 0.4), 2),
+            x["achievement_match_percentage"],
+            x["need_match_percentage"],
+        ),
+        reverse=True,
+    )
     final_matches = ranked_matches[:FINAL_MATCH_LIMIT]
 
     # Generate the RAG explanation text based on the top results
