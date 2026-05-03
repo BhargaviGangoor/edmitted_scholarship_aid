@@ -46,7 +46,7 @@ def match_scholarships_api(profile: StudentProfile):
     if not database_url:
         return {"matches": [], "error": "Missing DATABASE_URL"}
 
-    with psycopg2.connect(database_url, sslmode="require") as conn:
+    with psycopg2.connect(database_url) as conn:
         try:
             student_embedding = get_student_embedding(
                 client,

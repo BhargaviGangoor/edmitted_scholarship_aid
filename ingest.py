@@ -240,7 +240,7 @@ def process_rows() -> None:
 
     client = genai.Client(api_key=gemini_api_key)
 
-    with psycopg2.connect(database_url, sslmode="require") as conn:
+    with psycopg2.connect(database_url) as conn:
         existing_ids = get_existing_ids(conn) if RESUME_MODE else set()
 
         if not RESUME_MODE:
