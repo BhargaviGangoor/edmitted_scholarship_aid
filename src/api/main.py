@@ -4,13 +4,14 @@ from fastapi import FastAPI
 from dotenv import load_dotenv
 from google import genai
 
-from models import StudentProfile, GradecardRequest, ChatRequest
-from scoring import achievement_percentage, need_percentage
-from database import get_student_embedding, get_all_eligible_scholarships, embedding_fallback_active
-from llm_services import generate_explanation, parse_gradecard, process_chat_message
+from src.models.schemas import StudentProfile, GradecardRequest, ChatRequest
+from src.core.scoring import achievement_percentage, need_percentage
+from src.core.database import get_student_embedding, get_all_eligible_scholarships, embedding_fallback_active
+from src.services.llm_services import generate_explanation, parse_gradecard, process_chat_message
+from src.core.config import Config
 
 app = FastAPI()
-FINAL_MATCH_LIMIT = 10
+FINAL_MATCH_LIMIT = Config.FINAL_MATCH_LIMIT
 
 STATE_TO_ABBR = {
     "ALABAMA": "AL", "ALASKA": "AK", "ARIZONA": "AZ", "ARKANSAS": "AR", "CALIFORNIA": "CA",
@@ -33,8 +34,8 @@ def normalize_state_input(state: str) -> str:
         return value
     return STATE_TO_ABBR.get(value, state)
 
-load_dotenv()
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+Config.validate()
+client = genai.Client(api_key=Config.GEMINI_API_KEY)
 
 @app.get("/")
 def home():
@@ -42,7 +43,7 @@ def home():
 
 @app.post("/api/match-scholarships")
 def match_scholarships_api(profile: StudentProfile):
-    database_url = os.getenv("DATABASE_URL")
+    database_url = Config.DATABASE_URL
     if not database_url:
         return {"matches": [], "error": "Missing DATABASE_URL"}
 
@@ -75,10 +76,20 @@ def match_scholarships_api(profile: StudentProfile):
 
     fallback_mode = embedding_fallback_active()
 
+    seen_keys = set()
     valid_scholarships = []
 
     # 1. Score all eligible scholarships returned by SQL filters.
     for row in rows:
+        name = row[1]
+        description = row[2]
+        
+        # Deduplicate based on content to handle redundant CSV entries
+        content_key = (name, description)
+        if content_key in seen_keys:
+            continue
+        seen_keys.add(content_key)
+
         distance = float(row[3])
         text_rank = float(row[4])
         income_ceiling = float(row[5]) if row[5] is not None else None
@@ -103,8 +114,8 @@ def match_scholarships_api(profile: StudentProfile):
 
         valid_scholarships.append({
             "id": row[0],
-            "name": row[1],
-            "description": row[2],
+            "name": name,
+            "description": description,
             "achievement_match_percentage": achievement_match,
             "need_match_percentage": need_match
         })

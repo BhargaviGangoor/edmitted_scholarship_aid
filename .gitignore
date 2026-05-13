@@ -1,5 +1,29 @@
+# Virtual Environment
 .venv/
+venv/
+ENV/
+env/
+
+# Python Cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment Variables
 .env
+
+# Data & CSVs (keep template/example if needed, but exclude large data)
 Most-Recent-Cohorts-All-Data-Elements.csv
+# data/edmitted_top100_scholarships.csv # Uncomment if you don't want to push data
+
+# IDEs
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

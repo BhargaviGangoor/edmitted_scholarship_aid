@@ -7,10 +7,10 @@ from typing import Any
 
 import pandas as pd
 import psycopg2
-from dotenv import load_dotenv
 from google import genai
+from src.core.config import Config
 
-CSV_PATH = "edmitted_top100_scholarships.csv"
+CSV_PATH = "data/edmitted_top100_scholarships.csv"
 EMBEDDING_MODELS = ("embedding-001", "gemini-embedding-001")
 EMBEDDING_DIM = 3072
 API_DELAY_SECONDS = 0.0
@@ -223,10 +223,9 @@ def clear_financial_opportunities(conn: psycopg2.extensions.connection) -> None:
 
 #pipeline repeating
 def process_rows() -> None:
-    load_dotenv()
-
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    database_url = os.getenv("DATABASE_URL")
+    Config.validate()
+    gemini_api_key = Config.GEMINI_API_KEY
+    database_url = Config.DATABASE_URL
 
     if not gemini_api_key:
         raise ValueError("Missing GEMINI_API_KEY in environment.")

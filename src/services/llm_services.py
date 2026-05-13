@@ -1,5 +1,5 @@
 import json
-from models import StudentProfile
+from src.models.schemas import StudentProfile
 
 EXPLANATION_MODELS = (
     "gemini-2.5-flash",

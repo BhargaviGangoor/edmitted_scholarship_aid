@@ -1,10 +1,8 @@
-import os
 import psycopg2
-from dotenv import load_dotenv
+from src.core.config import Config
 
 def setup_database():
-    load_dotenv()
-    database_url = os.getenv("DATABASE_URL")
+    database_url = Config.DATABASE_URL
     
     if not database_url:
         print("Error: DATABASE_URL environment variable is not set.")

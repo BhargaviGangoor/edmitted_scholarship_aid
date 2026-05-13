@@ -1,152 +1,178 @@
 # EdMitted Scholarship Matcher API
 
-FastAPI service for scholarship matching using structured eligibility filters, vector similarity, and LLM-powered explanation/chat features.
+A high-performance scholarship matching engine built with **FastAPI**, **PostgreSQL (pgvector)**, and **Google Gemini**.
 
-## What This Project Does
+## 🚀 Overview
 
-1. Ingests scholarships from CSV into PostgreSQL with embeddings.
-2. Filters scholarships by hard eligibility rules (GPA, income, state).
-3. Scores candidates with:
-   - achievement score (vector similarity + text keyword bonus)
-   - need score (student income + scholarship income targeting)
-4. Ranks all eligible rows, then returns the best matches.
-5. Generates a natural-language explanation of top results.
-6. Supports transcript parsing and chat-driven profile collection.
+EdMitted helps students find the best scholarship opportunities by combining:
+- **Vector Similarity Search**: Matches student interests and extracurriculars using LLM embeddings.
+- **Structured Eligibility Filters**: Enforces hard rules like GPA, income ceilings, and state residency.
+- **LLM-Powered Insights**: Generates natural language explanations for why a scholarship is a good fit.
+- **Intelligent Chat Advisor**: A conversational interface that collects student profiles and provides instant matches.
 
-## File-by-File Guide
+---
 
-- `app.py`
-  - FastAPI entrypoint.
-  - Defines endpoints:
-    - `GET /`
-    - `POST /api/match-scholarships`
-    - `POST /api/parse-gradecard`
-    - `POST /api/chat`
-  - Runs end-to-end matching flow:
-    - embed student profile
-    - fetch eligible scholarships from DB
-    - compute achievement/need percentages
-    - apply thresholds
-    - rank all valid rows and return top results
-  - Calls LLM explanation generation for final matches.
+## 📂 Project Structure
 
-- `database.py`
-  - Database/query helpers used by API runtime.
-  - Builds student embedding input text.
-  - Queries eligible scholarships from `financial_opportunities` with:
-    - GPA filter
-    - income ceiling filter
-    - state filter (`state_requirement` or `National`)
-  - Returns vector distance + text rank for downstream scoring.
-
-- `ingest.py`
-  - Data ingestion pipeline from CSV to PostgreSQL.
-  - Loads `edmitted_top100_scholarships.csv`.
-  - Generates embeddings for each scholarship text.
-  - Clears and repopulates `financial_opportunities` table.
-  - Handles nullable numeric fields and embedding/model fallback.
-
-- `llm_services.py`
-  - LLM utility layer.
-  - `generate_explanation`: creates concise explanation for top matches.
-  - `parse_gradecard`: extracts profile JSON from transcript/gradecard text.
-  - `process_chat_message`: runs advisor chat and intercepts trigger JSON when profile is complete.
-
-- `models.py`
-  - Pydantic request/response models:
-    - `StudentProfile`
-    - `GradecardRequest`
-    - `ChatMessage`
-    - `ChatRequest`
-
-- `scoring.py`
-  - Pure scoring helpers:
-    - `achievement_percentage(distance)`
-    - `need_percentage(student_income, income_ceiling)`
-
-- `requirements.txt`
-  - Python dependencies for API, DB, and Gemini integration.
-
-- `edmitted_top100_scholarships.csv`
-  - Scholarship source data used during ingestion.
-
-## Prerequisites
-
-- Python 3.10+
-- PostgreSQL with `pgvector` enabled
-- Google Gemini API key
-
-## Environment Variables
-
-Create a `.env` file in project root:
-
-```env
-GEMINI_API_KEY=your_gemini_key
-DATABASE_URL=postgresql://user:password@host:5432/dbname
+```text
+edmitted/
+├── data/               # Scholarship source data (CSV)
+├── scripts/            # Database setup and data ingestion tools
+├── src/
+│   ├── api/           # FastAPI application and routes
+│   ├── core/          # Database connection, scoring logic, and config
+│   ├── models/        # Pydantic data schemas
+│   └── services/      # LLM integration logic
+├── .env.example       # Template for environment variables
+├── requirements.txt   # Project dependencies
+└── README.md          # Documentation
 ```
 
-## Install
+---
 
+## 🛠️ Tech Stack
+
+- **Backend**: Python 3.10+, FastAPI
+- **Database**: PostgreSQL with `pgvector` extension
+- **AI/ML**: Google Gemini (Flash & Pro models), Gemini Embeddings
+- **Data Processing**: Pandas, Psycopg2
+
+---
+
+## ⚙️ Setup Instructions
+
+### 1. Prerequisites
+- Python 3.10 or higher
+- PostgreSQL with the `pgvector` extension enabled
+- Google Gemini API Key ([Get one here](https://aistudio.google.com/))
+
+### 2. Installation
+Clone the repository and install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-## Ingest Scholarship Data
+### 3. Configuration
+Create a `.env` file in the root directory (use `.env.example` as a template):
+```env
+GEMINI_API_KEY=your_gemini_key
+DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+```
 
-Run this whenever CSV data changes:
-
+### 4. Database Initialization
+Initialize the database schema and pgvector extension:
 ```bash
-python ingest.py
+python -m scripts.setup_local_db
 ```
 
-## Run API
-
+### 5. Data Ingestion
+Load the scholarship data from CSV into your database:
 ```bash
-python -m uvicorn app:app --reload --port 8001
+python -m scripts.ingest
 ```
 
-Open docs:
+---
 
-```text
-http://127.0.0.1:8001/docs
+## 🚦 Running the Application
+
+Start the FastAPI server:
+```bash
+python -m uvicorn src.api.main:app --reload --port 8001
 ```
 
-## API Endpoints
+Access the interactive API documentation:
+- **Swagger UI**: [http://127.0.0.1:8001/docs](http://127.0.0.1:8001/docs)
 
-### `GET /`
+---
 
-Basic health response.
+## 🔌 API Endpoints
 
 ### `POST /api/match-scholarships`
+Matches a student profile against the scholarship database.
+- **Input**: GPA, Income, State, Major, Extracurriculars.
+- **Output**: Ranked matches, achievement/need scores, and an AI-generated explanation.
 
-Input example:
+### `POST /api/parse-gradecard`
+Parses transcript text into a structured student profile.
+
+### `POST /api/chat`
+A conversational AI agent that collects profile details and triggers matching automatically.
+
+---
+
+## 🧪 Test Cases
+
+Use these JSON payloads to test the API endpoints via Swagger UI or Postman.
+
+### 1. Scholarship Matching (`POST /api/match-scholarships`)
+
+| Scenario | Payload |
+| :--- | :--- |
+| **Tech Student** | `{"gpa": 3.9, "income": 40000, "state": "National", "major": "Computer Science", "extracurriculars": "AI projects machine learning hackathons"}` |
+| **Medical Student** | `{"gpa": 3.8, "income": 30000, "state": "National", "major": "Medicine", "extracurriculars": "hospital volunteering clinical research"}` |
+| **Arts Student** | `{"gpa": 3.6, "income": 45000, "state": "National", "major": "Fine Arts", "extracurriculars": "painting exhibitions digital art"}` |
+| **High Income** | `{"gpa": 3.8, "income": 200000, "state": "National", "major": "Computer Science", "extracurriculars": "AI research internships"}` |
+| **Low GPA Filter** | `{"gpa": 2.5, "income": 40000, "state": "National", "major": "Computer Science", "extracurriculars": "coding projects"}` |
+| **Mixed Domain** | `{"gpa": 3.7, "income": 50000, "state": "National", "major": "Computer Science", "extracurriculars": "painting exhibitions digital art"}` |
+| **Business** | `{"gpa": 3.7, "income": 50000, "state": "National", "major": "Business Administration", "extracurriculars": "startup founder marketing"}` |
+| **State Filter** | `{"gpa": 3.8, "income": 40000, "state": "California", "major": "Computer Science", "extracurriculars": "AI projects hackathons"}` |
+| **Empty Text** | `{"gpa": 3.5, "income": 50000, "state": "National", "major": "", "extracurriculars": ""}` |
+| **Perfect Match** | `{"gpa": 4.0, "income": 20000, "state": "National", "major": "Computer Science", "extracurriculars": "AI research internships hackathons"}` |
+
+### 2. Gradecard Parsing (`POST /api/parse-gradecard`)
 
 ```json
 {
-  "gpa": 3.8,
-  "income": 65000,
-  "state": "California",
-  "major": "Computer Science",
-  "extracurriculars": "Robotics club"
+  "gradecard_text": "Name: Sarah\nGPA: 3.8\nIncome: 40000\nState: California\nSubjects: Computer Science, Math\nActivities: Hackathons, AI club"
 }
 ```
 
-Response includes:
+### 3. AI Chat Advisor (`POST /api/chat`)
 
-- `achievement_table` (top 10 by achievement)
-- `need_table` (top 10 by need)
-- `final_matches` (best overall matches from full eligible set)
-- `explanation`
+**Scenario A: Profile Collection**
+```json
+{
+  "messages": [
+    {"role": "user", "content": "My GPA is 3.8"},
+    {"role": "user", "content": "Income is 35000"},
+    {"role": "user", "content": "I live in California"},
+    {"role": "user", "content": "I study Computer Science"},
+    {"role": "user", "content": "I do AI projects and hackathons"}
+  ]
+}
+```
 
-### `POST /api/parse-gradecard`
+**Scenario B: Conversational Flow**
+```json
+{
+  "messages": [
+    {"role": "user", "content": "Hey"},
+    {"role": "model", "content": "Hi! What's your GPA?"},
+    {"role": "user", "content": "3.6"},
+    {"role": "model", "content": "What’s your income?"},
+    {"role": "user", "content": "30000"},
+    {"role": "model", "content": "State?"},
+    {"role": "user", "content": "Texas"},
+    {"role": "model", "content": "Major?"},
+    {"role": "user", "content": "Computer Science"},
+    {"role": "model", "content": "Activities?"},
+    {"role": "user", "content": "Hackathons"}
+  ]
+}
+```
 
-Parses free-text gradecard/transcript into student profile fields.
+---
 
-### `POST /api/chat`
+## 🧠 Match Logic
 
-Chat endpoint that collects required profile details and automatically triggers scholarship matching once all required fields are present.
+1. **Filtering**: Excludes scholarships where the student doesn't meet GPA or state requirements.
+2. **Scoring**:
+   - **Achievement Match**: Vector distance (LLM) + Keyword matching bonus.
+   - **Need Match**: Calculated based on family income relative to scholarship ceilings.
+3. **Ranking**: Weighted combination of Achievement (60%) and Need (40%).
+4. **Explanation**: RAG-based generation using top matches to provide context to the student.
 
-## Notes
+---
 
-- Final ranking evaluates all valid eligible rows before selecting top output matches.
-- If your CSV contains `No Limit` for income, the ingestion parser currently treats non-numeric values as null.
+## 📝 License
+This project is for educational purposes. All scholarship data is sourced from EdMitted.
